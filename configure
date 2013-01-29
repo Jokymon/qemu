@@ -149,6 +149,7 @@ fdt=""
 nptl=""
 pixman=""
 sdl=""
+lua=""
 virtfs=""
 vnc="yes"
 sparse="no"
@@ -674,6 +675,8 @@ for opt do
   ;;
   --disable-virtfs) virtfs="no"
   ;;
+  --with-lua=*) lua="$optarg"
+  ;;
   --enable-virtfs) virtfs="yes"
   ;;
   --disable-vnc) vnc="no"
@@ -1042,6 +1045,7 @@ echo "  --disable-strip          disable stripping binaries"
 echo "  --disable-werror         disable compilation abort on warning"
 echo "  --disable-sdl            disable SDL"
 echo "  --enable-sdl             enable SDL"
+echo "  --with-lua=LUA_PREFIX    enable and use Lua from the specified source"
 echo "  --disable-virtfs         disable VirtFS"
 echo "  --enable-virtfs          enable VirtFS"
 echo "  --disable-vnc            disable VNC"
@@ -1709,6 +1713,15 @@ EOF
     sdl_libs="$sdl_libs -lX11"
   fi
   libs_softmmu="$sdl_libs $libs_softmmu"
+fi
+
+##########################################
+# LUA probe
+
+if test "$lua" != "" ; then
+	# TODO: test lua library
+    QEMU_CFLAGS="$QEMU_CFLAGS -I${lua}/include"
+	libs_softmmu="-L${lua}/lib -llua $libs_softmmu"
 fi
 
 ##########################################
@@ -3269,6 +3282,7 @@ if test "$darwin" = "yes" ; then
 fi
 echo "pixman            $pixman"
 echo "SDL support       $sdl"
+echo "LUA support       $lua"
 echo "curses support    $curses"
 echo "curl support      $curl"
 echo "mingw32 support   $mingw32"
