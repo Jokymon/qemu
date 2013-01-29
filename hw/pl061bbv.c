@@ -11,6 +11,8 @@
  */
 
 #include "sysbus.h"
+#include "lauxlib.h"
+#include "lualib.h"
 
 static const uint8_t pl061_id[12] =
   { 0x00, 0x00, 0x00, 0x00, 0x61, 0x10, 0x04, 0x00, 0x0d, 0xf0, 0x05, 0xb1 };
@@ -42,8 +44,15 @@ typedef struct {
     qemu_irq irq;
     qemu_irq out[8];
     const unsigned char *id;
-	void * user_data;
+	lua_State * lua;
+	char * lua_script;
 } pl061bbv_state;
+
+static Property pl061bbv_properties[] =
+{
+	DEFINE_PROP_STRING("lua_script", pl061bbv_state, lua_script),
+    DEFINE_PROP_END_OF_LIST(),
+};
 
 static const VMStateDescription vmstate_pl061bbv = {
     .name = "pl061bbv",
@@ -93,6 +102,13 @@ static void pl061bbv_update(pl061bbv_state *s)
     for (i = 0; i < 8; i++) {
         mask = 1 << i;
         if (changed & mask) {
+			if (s->lua) {
+				/* TODO: exception handling */
+				lua_getglobal(s->lua, "gpio_set");
+				lua_pushinteger(s->lua, i);
+				lua_pushinteger(s->lua, (out & mask) != 0);
+				lua_pcall(s->lua, 2, 0, 0);
+			}
             /* printf("pl061bbv: Set output %d = %d\n", i, (out & mask) != 0); */
             qemu_set_irq(s->out[i], (out & mask) != 0);
         }
@@ -105,6 +121,8 @@ static uint64_t pl061bbv_read(void *opaque, hwaddr offset,
                            unsigned size)
 {
     pl061bbv_state *s = (pl061bbv_state *)opaque;
+
+	/* TODO: read from lua state */
 
     if (offset >= 0xfd0 && offset < 0x1000) {
         return s->id[(offset - 0xfd0) >> 2];
@@ -260,12 +278,37 @@ static const MemoryRegionOps pl061bbv_ops = {
     .endianness = DEVICE_NATIVE_ENDIAN,
 };
 
+static int pl061bbv_lua_init(pl061bbv_state * s)
+{
+	s->lua = luaL_newstate();
+	if (s->lua == NULL) {
+		printf("pl061bbv: unable to create lua state\n");
+		return -1;
+	}
+
+	luaopen_base(s->lua);
+	luaopen_table(s->lua);
+	luaopen_string(s->lua);
+	luaopen_bit32(s->lua);
+	luaopen_math(s->lua);
+	luaopen_debug(s->lua);
+
+	if (luaL_dofile(s->lua, (s->lua_script) ? s->lua_script : "src/gpio.lua")) {
+		printf("pl061bbv: unable to execute script\n");
+		return -1;
+	}
+
+	return 0;
+}
+
 static int pl061bbv_init(SysBusDevice *dev, const unsigned char *id)
 {
     pl061bbv_state *s = FROM_SYSBUS(pl061bbv_state, dev);
-	printf("pl061bbv: %s\n", __FUNCTION__);
+	printf("pl061bbv: %s : prop:lua_script='%s'\n", __FUNCTION__, s->lua_script);
     s->id = id;
-	s->user_data = NULL;
+
+	if (pl061bbv_lua_init(s) < 0) return -1;
+
     memory_region_init_io(&s->iomem, &pl061bbv_ops, s, "pl061bbv", 0x1000);
     sysbus_init_mmio(dev, &s->iomem);
     sysbus_init_irq(dev, &s->irq);
@@ -287,6 +330,7 @@ static void pl061bbv_class_init(ObjectClass *klass, void *data)
 
     k->init = pl061bbv_init_arm;
     dc->vmsd = &vmstate_pl061bbv;
+	dc->props = pl061bbv_properties;
 }
 
 static const TypeInfo pl061bbv_info = {
