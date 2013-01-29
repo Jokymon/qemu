@@ -84,6 +84,53 @@ static const VMStateDescription vmstate_pl061bbv = {
     }
 };
 
+static int pl061bbv_lua_init(pl061bbv_state * s)
+{
+	s->lua = luaL_newstate();
+	if (s->lua == NULL) {
+		printf("pl061bbv: unable to create lua state\n");
+		return -1;
+	}
+
+	luaopen_base(s->lua);
+	luaopen_table(s->lua);
+	luaopen_string(s->lua);
+	luaopen_bit32(s->lua);
+	luaopen_math(s->lua);
+	luaopen_debug(s->lua);
+
+	if (luaL_dofile(s->lua, (s->lua_script) ? s->lua_script : "src/gpio.lua")) {
+		printf("pl061bbv: unable to execute script\n");
+		return -1;
+	}
+
+	return 0;
+}
+
+static void pl061bbv_lua_write(pl061bbv_state * s, uint32_t id, uint32_t val)
+{
+	if (s->lua == NULL) return;
+
+	/* TODO: exception handling */
+	lua_getglobal(s->lua, "gpio_set");
+	lua_pushinteger(s->lua, id);
+	lua_pushinteger(s->lua, val);
+	lua_pcall(s->lua, 2, 0, 0);
+}
+
+static uint32_t pl061bbv_lua_read(pl061bbv_state * s, uint32_t id)
+{
+	int rc;
+
+	/* TODO: exception handling */
+	lua_getglobal(s->lua, "gpio_get");
+	lua_pushinteger(s->lua, id);
+	lua_pcall(s->lua, 1, 1, 0);
+	rc = lua_tointeger(s->lua, -1);
+	lua_pop(s->lua, 1);
+	return rc;
+}
+
 static void pl061bbv_update(pl061bbv_state *s)
 {
     uint8_t changed;
@@ -102,14 +149,7 @@ static void pl061bbv_update(pl061bbv_state *s)
     for (i = 0; i < 8; i++) {
         mask = 1 << i;
         if (changed & mask) {
-			if (s->lua) {
-				/* TODO: exception handling */
-				lua_getglobal(s->lua, "gpio_set");
-				lua_pushinteger(s->lua, i);
-				lua_pushinteger(s->lua, (out & mask) != 0);
-				lua_pcall(s->lua, 2, 0, 0);
-			}
-            /* printf("pl061bbv: Set output %d = %d\n", i, (out & mask) != 0); */
+			pl061bbv_lua_write(s, i, (out & mask) != 0);
             qemu_set_irq(s->out[i], (out & mask) != 0);
         }
     }
@@ -120,15 +160,21 @@ static void pl061bbv_update(pl061bbv_state *s)
 static uint64_t pl061bbv_read(void *opaque, hwaddr offset,
                            unsigned size)
 {
+	uint32_t i;
     pl061bbv_state *s = (pl061bbv_state *)opaque;
 
-	/* TODO: read from lua state */
-
     if (offset >= 0xfd0 && offset < 0x1000) {
+		printf("%s:%d: TODO\n", __FUNCTION__, __LINE__);
         return s->id[(offset - 0xfd0) >> 2];
     }
     if (offset < 0x400) {
-        return s->data & (offset >> 2);
+		if (s->lua) {
+			offset >>= 3;
+			for (i = 1; offset > 0; offset >>= 1, ++i);
+			return pl061bbv_lua_read(s, i);
+		} else {
+			return s->data & (offset >> 2);
+		}
     }
     switch (offset) {
     case 0x400: /* Direction */
@@ -277,29 +323,6 @@ static const MemoryRegionOps pl061bbv_ops = {
     .write = pl061bbv_write,
     .endianness = DEVICE_NATIVE_ENDIAN,
 };
-
-static int pl061bbv_lua_init(pl061bbv_state * s)
-{
-	s->lua = luaL_newstate();
-	if (s->lua == NULL) {
-		printf("pl061bbv: unable to create lua state\n");
-		return -1;
-	}
-
-	luaopen_base(s->lua);
-	luaopen_table(s->lua);
-	luaopen_string(s->lua);
-	luaopen_bit32(s->lua);
-	luaopen_math(s->lua);
-	luaopen_debug(s->lua);
-
-	if (luaL_dofile(s->lua, (s->lua_script) ? s->lua_script : "src/gpio.lua")) {
-		printf("pl061bbv: unable to execute script\n");
-		return -1;
-	}
-
-	return 0;
-}
 
 static int pl061bbv_init(SysBusDevice *dev, const unsigned char *id)
 {
