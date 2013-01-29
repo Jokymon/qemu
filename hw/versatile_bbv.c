@@ -90,9 +90,9 @@ static void versatile_bbv_board_init(QEMUMachineInitArgs *args)
 
 	/* gpio */
 
-	sysbus_create_simple("pl061", 0x101e4000, pic[6]);
-	sysbus_create_simple("pl061", 0x101e5000, pic[7]);
-	sysbus_create_simple("pl061", 0x101e6000, pic[8]);
+	sysbus_create_simple("pl061bbv", 0x101e4000, pic[6]);
+	sysbus_create_simple("pl061bbv", 0x101e5000, pic[7]);
+	sysbus_create_simple("pl061bbv", 0x101e6000, pic[8]);
 	sysbus_create_simple("pl061bbv", 0x101e7000, pic[9]);
 
 	/* rtc */

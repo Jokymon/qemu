@@ -93,7 +93,7 @@ static void pl061bbv_update(pl061bbv_state *s)
     for (i = 0; i < 8; i++) {
         mask = 1 << i;
         if (changed & mask) {
-            printf("pl061bbv: Set output %d = %d\n", i, (out & mask) != 0);
+            /* printf("pl061bbv: Set output %d = %d\n", i, (out & mask) != 0); */
             qemu_set_irq(s->out[i], (out & mask) != 0);
         }
     }
@@ -106,7 +106,6 @@ static uint64_t pl061bbv_read(void *opaque, hwaddr offset,
 {
     pl061bbv_state *s = (pl061bbv_state *)opaque;
 
-	printf("pl061bbv: %s\n", __FUNCTION__);
     if (offset >= 0xfd0 && offset < 0x1000) {
         return s->id[(offset - 0xfd0) >> 2];
     }
@@ -165,7 +164,6 @@ static void pl061bbv_write(void *opaque, hwaddr offset,
     pl061bbv_state *s = (pl061bbv_state *)opaque;
     uint8_t mask;
 
-	printf("pl061bbv: %s\n", __FUNCTION__);
     if (offset < 0x400) {
         mask = (offset >> 2) & s->dir;
         s->data = (s->data & ~mask) | (value & mask);
