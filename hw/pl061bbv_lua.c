@@ -48,38 +48,38 @@ typedef struct {
 	char * lua_script;
 } pl061bbv_state;
 
-static Property pl061bbv_properties[] =
+static Property properties[] =
 {
 	DEFINE_PROP_STRING("lua_script", pl061bbv_state, lua_script),
     DEFINE_PROP_END_OF_LIST(),
 };
 
 static const VMStateDescription vmstate_pl061bbv = {
-    .name = "pl061bbv",
+    .name = "pl061bbv_lua",
     .version_id = 2,
     .minimum_version_id = 1,
     .fields = (VMStateField[]) {
-        VMSTATE_UINT32(locked, pl061bbv_state),
-        VMSTATE_UINT32(data, pl061bbv_state),
-        VMSTATE_UINT32(old_data, pl061bbv_state),
-        VMSTATE_UINT32(dir, pl061bbv_state),
-        VMSTATE_UINT32(isense, pl061bbv_state),
-        VMSTATE_UINT32(ibe, pl061bbv_state),
-        VMSTATE_UINT32(iev, pl061bbv_state),
-        VMSTATE_UINT32(im, pl061bbv_state),
-        VMSTATE_UINT32(istate, pl061bbv_state),
-        VMSTATE_UINT32(afsel, pl061bbv_state),
-        VMSTATE_UINT32(dr2r, pl061bbv_state),
-        VMSTATE_UINT32(dr4r, pl061bbv_state),
-        VMSTATE_UINT32(dr8r, pl061bbv_state),
-        VMSTATE_UINT32(odr, pl061bbv_state),
-        VMSTATE_UINT32(pur, pl061bbv_state),
-        VMSTATE_UINT32(pdr, pl061bbv_state),
-        VMSTATE_UINT32(slr, pl061bbv_state),
-        VMSTATE_UINT32(den, pl061bbv_state),
-        VMSTATE_UINT32(cr, pl061bbv_state),
+        VMSTATE_UINT32(locked,     pl061bbv_state),
+        VMSTATE_UINT32(data,       pl061bbv_state),
+        VMSTATE_UINT32(old_data,   pl061bbv_state),
+        VMSTATE_UINT32(dir,        pl061bbv_state),
+        VMSTATE_UINT32(isense,     pl061bbv_state),
+        VMSTATE_UINT32(ibe,        pl061bbv_state),
+        VMSTATE_UINT32(iev,        pl061bbv_state),
+        VMSTATE_UINT32(im,         pl061bbv_state),
+        VMSTATE_UINT32(istate,     pl061bbv_state),
+        VMSTATE_UINT32(afsel,      pl061bbv_state),
+        VMSTATE_UINT32(dr2r,       pl061bbv_state),
+        VMSTATE_UINT32(dr4r,       pl061bbv_state),
+        VMSTATE_UINT32(dr8r,       pl061bbv_state),
+        VMSTATE_UINT32(odr,        pl061bbv_state),
+        VMSTATE_UINT32(pur,        pl061bbv_state),
+        VMSTATE_UINT32(pdr,        pl061bbv_state),
+        VMSTATE_UINT32(slr,        pl061bbv_state),
+        VMSTATE_UINT32(den,        pl061bbv_state),
+        VMSTATE_UINT32(cr,         pl061bbv_state),
         VMSTATE_UINT32(float_high, pl061bbv_state),
-        VMSTATE_UINT32_V(amsel, pl061bbv_state, 2),
+        VMSTATE_UINT32_V(amsel,    pl061bbv_state, 2),
         VMSTATE_END_OF_LIST()
     }
 };
@@ -88,7 +88,7 @@ static int pl061bbv_lua_init(pl061bbv_state * s)
 {
 	s->lua = luaL_newstate();
 	if (s->lua == NULL) {
-		printf("pl061bbv: unable to create lua state\n");
+		printf("pl061bbv_lua: unable to create lua state\n");
 		return -1;
 	}
 
@@ -100,7 +100,7 @@ static int pl061bbv_lua_init(pl061bbv_state * s)
 	luaopen_debug(s->lua);
 
 	if (luaL_dofile(s->lua, (s->lua_script) ? s->lua_script : "src/gpio.lua")) {
-		printf("pl061bbv: unable to execute script\n");
+		printf("pl061bbv_lua: unable to execute script\n");
 		return -1;
 	}
 
@@ -327,12 +327,12 @@ static const MemoryRegionOps pl061bbv_ops = {
 static int pl061bbv_init(SysBusDevice *dev, const unsigned char *id)
 {
     pl061bbv_state *s = FROM_SYSBUS(pl061bbv_state, dev);
-	printf("pl061bbv: %s : prop:lua_script='%s'\n", __FUNCTION__, s->lua_script);
+	printf("pl061bbv_lua: %s : prop:lua_script='%s'\n", __FUNCTION__, s->lua_script);
     s->id = id;
 
 	if (pl061bbv_lua_init(s) < 0) return -1;
 
-    memory_region_init_io(&s->iomem, &pl061bbv_ops, s, "pl061bbv", 0x1000);
+    memory_region_init_io(&s->iomem, &pl061bbv_ops, s, "pl061bbv_lua", 0x1000);
     sysbus_init_mmio(dev, &s->iomem);
     sysbus_init_irq(dev, &s->irq);
     qdev_init_gpio_in(&dev->qdev, pl061bbv_set_irq, 8);
@@ -353,11 +353,11 @@ static void pl061bbv_class_init(ObjectClass *klass, void *data)
 
     k->init = pl061bbv_init_arm;
     dc->vmsd = &vmstate_pl061bbv;
-	dc->props = pl061bbv_properties;
+	dc->props = properties;
 }
 
 static const TypeInfo pl061bbv_info = {
-    .name          = "pl061bbv",
+    .name          = "pl061bbv_lua",
     .parent        = TYPE_SYS_BUS_DEVICE,
     .instance_size = sizeof(pl061bbv_state),
     .class_init    = pl061bbv_class_init,
