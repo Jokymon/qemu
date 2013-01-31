@@ -93,13 +93,13 @@ static void versatile_bbv_board_init(QEMUMachineInitArgs *args)
 	dev = sysbus_create_simple("pl061bbv_lua", 0x101e4000, pic[6]);
 	dev->id = "GPIO-1";
 
-	dev = sysbus_create_simple("pl061bbv_lua", 0x101e5000, pic[7]);
+	dev = sysbus_create_simple("pl061bbv_sock", 0x101e5000, pic[7]);
 	dev->id = "GPIO-2";
 
-	dev = sysbus_create_simple("pl061bbv_lua", 0x101e6000, pic[8]);
+	dev = sysbus_create_simple("pl061", 0x101e6000, pic[8]);
 	dev->id = "GPIO-3";
 
-	dev = sysbus_create_simple("pl061bbv_lua", 0x101e7000, pic[9]);
+	dev = sysbus_create_simple("pl061", 0x101e7000, pic[9]);
 	dev->id = "GPIO-4";
 
 	/* rtc */
