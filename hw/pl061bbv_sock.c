@@ -51,9 +51,6 @@ typedef struct {
 
 static Property properties[] =
 {
-/*
-	DEFINE_PROP_STRING("lua_script", pl061bbv_state, lua_script),
-*/
     DEFINE_PROP_END_OF_LIST(),
 };
 
@@ -91,6 +88,8 @@ static int pl061bbv_sock_init(pl061bbv_state * s)
 {
 	int rc;
 
+	if (s->sock >= 0) return 0;
+
 	s->sock = socket(AF_INET, SOCK_STREAM, 0);
 	if (s->sock < 0) {
 		perror("socket");
@@ -123,7 +122,11 @@ static int pl061bbv_sock_write(pl061bbv_state * s, uint8_t data)
 	int rc;
 	msg_t msg;
 
-	if (s->sock < 0) return -1;
+	if (s->sock < 0) {
+		if (pl061bbv_sock_init(s) < 0) {
+			return -1;
+		}
+	}
 
 	msg.cmd = CMD_WRITE;
 	msg.data = data;
@@ -142,7 +145,11 @@ static uint64_t pl061bbv_sock_read(pl061bbv_state * s)
 	msg_t msg;
 	fd_set rfds;
 
-	if (s->sock < 0) return (uint64_t)-1;
+	if (s->sock < 0) {
+		if (pl061bbv_sock_init(s) < 0) {
+			return (uint64_t)-1;
+		}
+	}
 
 	msg.cmd = CMD_READ;
 	msg.data = 0;
@@ -369,7 +376,10 @@ static int pl061bbv_init(SysBusDevice *dev, const unsigned char *id)
     pl061bbv_state *s = FROM_SYSBUS(pl061bbv_state, dev);
     s->id = id;
 
-	if (pl061bbv_sock_init(s) < 0) return -1;
+	s->sock = -1;
+	if (pl061bbv_sock_init(s) < 0) {
+		printf("%s: unable to init connection\n", __FUNCTION__);
+	}
 
     memory_region_init_io(&s->iomem, &pl061bbv_ops, s, "pl061bbv_sock", 0x1000);
     sysbus_init_mmio(dev, &s->iomem);
