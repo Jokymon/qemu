@@ -93,6 +93,7 @@ common-obj-$(CONFIG_PL050) += pl050.o
 common-obj-$(CONFIG_PL061) += pl061.o
 common-obj-$(CONFIG_PL061) += pl061bbv_lua.o
 common-obj-$(CONFIG_PL061) += pl061bbv_sock.o
+common-obj-$(CONFIG_PL061) += pl061bbv_socksrv.o
 common-obj-$(CONFIG_PL080) += pl080.o
 common-obj-$(CONFIG_PL110) += pl110.o
 common-obj-$(CONFIG_PL181) += pl181.o
