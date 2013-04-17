@@ -50,10 +50,8 @@ typedef struct {
 	int sock;
 	struct sockaddr_in addr;
 	QemuThread thread_id;
-	QemuMutex mtx;
 	int client_sock;
 	struct sockaddr_in client_addr;
-	uint8_t cache;
 } pl061bbv_state;
 
 static Property properties[] =
@@ -91,29 +89,14 @@ static const VMStateDescription vmstate_pl061bbv = {
     }
 };
 
-static int pl061bbv_sock_write(pl061bbv_state * s, uint8_t data)
-{
-	qemu_mutex_lock(&s->mtx);
-	s->cache = data;
-	qemu_mutex_unlock(&s->mtx);
-	return 0;
-}
-
-static uint64_t pl061bbv_sock_read(pl061bbv_state * s)
-{
-	uint64_t result;
-	qemu_mutex_lock(&s->mtx);
-	result = s->cache;
-	qemu_mutex_unlock(&s->mtx);
-	return result;
-}
-
 typedef enum { CMD_INVALID = 0, CMD_WRITE = 1, CMD_READ = 2, CMD_RESULT = 3 } cmd_t;
 
 typedef struct { /* keep data 8 bits to avoid byte order issue, and 8bits are suffient */
 	uint8_t cmd;
 	uint8_t data;
 } msg_t;
+
+static void pl061bbv_update(pl061bbv_state *s, int send_to_client);
 
 static void process_client(pl061bbv_state * s)
 {
@@ -140,12 +123,14 @@ static void process_client(pl061bbv_state * s)
 				/* ignore */
 				break;
 			case CMD_WRITE:
-				printf("%s: write\n", __PRETTY_FUNCTION__);
-				pl061bbv_sock_write(s, msg.data);
+				printf("%s: write: 0x%02x\n", __PRETTY_FUNCTION__, msg.data);
+				s->data = msg.data;
+				pl061bbv_update(s, 0);
 				break;
 			case CMD_READ:
 				msg.cmd = CMD_RESULT;
-				msg.data = (uint8_t)pl061bbv_sock_read(s);
+				msg.data = (uint8_t)(s->data);
+				printf("%s: read: 0x%02x\n", __PRETTY_FUNCTION__, msg.data);
 				rc = write(s->client_sock, &msg, sizeof(msg));
 				if (rc < 0) {
 					perror("write");
@@ -229,7 +214,7 @@ static int pl061bbv_sock_init(pl061bbv_state * s)
 	return 0;
 }
 
-static void pl061bbv_update(pl061bbv_state *s)
+static void pl061bbv_update(pl061bbv_state *s, int send_to_client)
 {
     uint8_t changed;
     uint8_t mask;
@@ -247,10 +232,9 @@ static void pl061bbv_update(pl061bbv_state *s)
 
     s->old_data = out;
 
-	pl061bbv_sock_write(s, out); /* TODO: protect 's->client_sock' and 's->cache' with mtx? */
-	if (s->client_sock >= 0) {
+	if (send_to_client && s->client_sock >= 0) {
 		msg.cmd = CMD_WRITE;
-		msg.data = s->cache;
+		msg.data = s->data;
 		rc = write(s->client_sock, &msg, sizeof(msg));
 		if (rc < 0) {
 			printf("%s: ", __PRETTY_FUNCTION__);
@@ -258,14 +242,15 @@ static void pl061bbv_update(pl061bbv_state *s)
 		}
 	}
 
-    for (i = 0; i < 8; i++) {
-        mask = 1 << i;
-        if (changed & mask) {
-            qemu_set_irq(s->out[i], (out & mask) != 0);
-        }
-    }
+	for (i = 0; i < 8; i++) {
+		mask = 1 << i;
+		if (changed & mask) {
+			printf("%s:%d: %d = %d\n", __PRETTY_FUNCTION__, __LINE__, i, (out & mask) != 0);
+			qemu_set_irq(s->out[i], (out & mask) != 0);
+		}
+	}
 
-    /* FIXME: Implement input interrupts.  */
+	/* FIXME: Implement input interrupts.  */
 }
 
 static uint64_t pl061bbv_read(void *opaque, hwaddr offset,
@@ -278,7 +263,7 @@ static uint64_t pl061bbv_read(void *opaque, hwaddr offset,
         return s->id[(offset - 0xfd0) >> 2];
     }
     if (offset < 0x400) {
-		return pl061bbv_sock_read(s) & (offset >> 2);
+		return (uint64_t)(s->data) & (offset >> 2);
     }
     switch (offset) {
     case 0x400: /* Direction */
@@ -335,7 +320,7 @@ static void pl061bbv_write(void *opaque, hwaddr offset,
     if (offset < 0x400) {
         mask = (offset >> 2) & s->dir;
         s->data = (s->data & ~mask) | (value & mask);
-        pl061bbv_update(s);
+        pl061bbv_update(s, 1);
         return;
     }
     switch (offset) {
@@ -399,7 +384,7 @@ static void pl061bbv_write(void *opaque, hwaddr offset,
         qemu_log_mask(LOG_GUEST_ERROR,
                       "%s: Bad offset %x\n", __FUNCTION__, (int)offset);
     }
-    pl061bbv_update(s);
+    pl061bbv_update(s, 1);
 }
 
 static void pl061bbv_reset(pl061bbv_state *s)
@@ -413,12 +398,13 @@ static void pl061bbv_set_irq(void * opaque, int irq, int level)
     pl061bbv_state *s = (pl061bbv_state *)opaque;
     uint8_t mask;
 
+	printf("%s:%d: irq = %d\n", __PRETTY_FUNCTION__, __LINE__, irq);
     mask = 1 << irq;
     if ((s->dir & mask) == 0) {
         s->data &= ~mask;
         if (level)
             s->data |= mask;
-        pl061bbv_update(s);
+        pl061bbv_update(s, 1);
     }
 }
 
@@ -433,14 +419,12 @@ static int pl061bbv_init(SysBusDevice *dev, const unsigned char *id)
     pl061bbv_state *s = FROM_SYSBUS(pl061bbv_state, dev);
     s->id = id;
 
-	s->cache = 0xff;
 	s->sock = -1;
 	s->client_sock = -1;
 	if (pl061bbv_sock_init(s) < 0) {
 		printf("%s: unable to init listener socket\n", __FUNCTION__);
 		return -1;
 	}
-	qemu_mutex_init(&s->mtx);
 	qemu_thread_create(&s->thread_id, thread_func, s, QEMU_THREAD_JOINABLE);
 
     memory_region_init_io(&s->iomem, &pl061bbv_ops, s, "pl061bbv_socksrv", 0x1000);
